@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Waze Live • Tesla</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body, html {
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        #container {
+            width: 100%;
+            height: 100vh;
+            position: relative;
+        }
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+        #status {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            background: rgba(0,0,0,0.85);
+            color: #fff;
+            padding: 12px 20px;
+            border-radius: 12px;
+            font-size: 15px;
+            z-index: 100;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+        }
+        #speed {
+            position: absolute;
+            bottom: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.85);
+            color: #00ff00;
+            padding: 10px 30px;
+            border-radius: 50px;
+            font-size: 24px;
+            font-weight: bold;
+            z-index: 100;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="container">
+        <div id="status">Waiting for Tesla GPS...</div>
+        <iframe id="waze" 
+                src="https://embed.waze.com/iframe?zoom=15&lat=40.7128&lon=-74.0060&pin=1" 
+                allowfullscreen>
+        </iframe>
+        <div id="speed">0 km/h</div>
+    </div>
+
+    <script>
+        const iframe = document.getElementById('waze');
+        const status = document.getElementById('status');
+        const speedEl = document.getElementById('speed');
+
+        let lastLat = null;
+        let lastLon = null;
+        let lastTime = null;
+
+        function updateMap(lat, lon) {
+            iframe.src = `https://embed.waze.com/iframe?zoom=16&lat=${lat}&lon=${lon}&pin=1`;
+            status.textContent = `Live • ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+        }
+
+        function calcSpeed(lat1, lon1, lat2, lon2, dt) {
+            const R = 6371;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2)**2 + Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) * Math.sin(dLon/2)**2;
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            const km = R * c;
+            return (km / (dt / 3600000)).toFixed(0);
+        }
+
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(pos => {
+                const { latitude: lat, longitude: lon } = pos.coords;
+                const now = pos.timestamp;
+
+                updateMap(lat, lon);
+
+                if (lastLat !== null) {
+                    const speed = calcSpeed(lastLat, lastLon, lat, lon, now - lastTime);
+                    speedEl.textContent = `${speed} km/h`;
+                }
+
+                lastLat = lat;
+                lastLon = lon;
+                lastTime = now;
+
+            }, err => {
+                status.textContent = err.code === 1 
+                    ? "❌ Allow Location Access in Tesla Browser" 
+                    : "⚠️ GPS Error – Check signal";
+                console.error(err);
+            }, {
+                enableHighAccuracy: true,
+                maximumAge: 2000,
+                timeout: 8000
+            });
+        } else {
+            status.textContent = "Geolocation not supported";
+        }
+    </script>
+</body>
+</html>
