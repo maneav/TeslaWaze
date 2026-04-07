@@ -6,131 +6,46 @@
     <title>Waze Live • Tesla</title>
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
-        body, html { height:100%; overflow:hidden; background:#000; font-family:system-ui,sans-serif; }
+        body, html { height:100%; overflow:hidden; background:#000; }
         #container { width:100%; height:100vh; position:relative; }
         iframe { width:100%; height:100%; border:none; }
-        
-        #controls {
-            position: absolute; top: 15px; left: 15px; right: 15px; z-index: 100;
-            background: rgba(0,0,0,0.9); padding: 12px; border-radius: 12px;
-            display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
-        }
-        input { flex: 1; padding: 14px; border-radius: 8px; border: none; font-size: 17px; min-width: 220px; }
-        button {
-            padding: 14px 20px; border: none; border-radius: 8px; background: #cc0000;
-            color: white; font-size: 16px; cursor: pointer; white-space: nowrap;
-        }
-        button:hover { background: #ff0000; }
-
         #status {
-            position: absolute; bottom: 85px; left: 15px; background: rgba(0,0,0,0.85);
-            color: #fff; padding: 10px 16px; border-radius: 12px; font-size: 15px; z-index: 100;
-        }
-        #speed {
-            position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%);
-            background: rgba(0,0,0,0.85); color: #00ff00; padding: 10px 30px;
-            border-radius: 50px; font-size: 26px; font-weight: bold; z-index: 100;
+            position:absolute; top:15px; left:15px; background:rgba(0,0,0,0.85);
+            color:#fff; padding:12px 20px; border-radius:12px; z-index:100;
         }
     </style>
 </head>
 <body>
-
     <div id="container">
-        <div id="controls">
-            <input type="text" id="search" placeholder="Enter destination (e.g. Toronto, 123 Main St)" />
-            <button onclick="navigateTo()">🚗 Navigate</button>
-            <button onclick="searchOnMap()">🔎 Search on Map</button>
-            <button onclick="recenter()">📍 Recenter</button>
-        </div>
-        
-        <iframe id="waze" 
-                src="https://embed.waze.com/iframe?zoom=15&lat=43.65&lon=-79.38&pin=1" 
-                allowfullscreen>
-        </iframe>
-        
-        <div id="status">Waiting for Tesla GPS...</div>
-        <div id="speed">0 km/h</div>
+        <div id="status">Waiting for GPS...</div>
+        <iframe id="waze" src="https://embed.waze.com/iframe?zoom=16&lat=43.65&lon=-79.38&pin=1" allowfullscreen></iframe>
     </div>
 
     <script>
         const iframe = document.getElementById('waze');
         const status = document.getElementById('status');
-        const speedEl = document.getElementById('speed');
-        const searchInput = document.getElementById('search');
-
-        let lastLat = null, lastLon = null, lastTime = null;
-        let currentZoom = 16;
+        let lastUpdate = 0;
 
         function updateMap(lat, lon) {
-            iframe.src = `https://embed.waze.com/iframe?zoom=${currentZoom}&lat=${lat}&lon=${lon}&pin=1`;
+            const now = Date.now();
+            if (now - lastUpdate < 1500) return; // Limit updates to max once every 1.5 seconds (prevents too many reloads)
+            
+            iframe.src = `https://embed.waze.com/iframe?zoom=17&lat=${lat}&lon=${lon}&pin=1`;
             status.textContent = `Live • ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+            lastUpdate = now;
         }
 
-        function calcSpeed(lat1, lon1, lat2, lon2, dt) {
-            const R = 6371;
-            const dLat = (lat2 - lat1) * Math.PI / 180;
-            const dLon = (lon2 - lon1) * Math.PI / 180;
-            const a = Math.sin(dLat/2)**2 + Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) * Math.sin(dLon/2)**2;
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            const km = R * c;
-            return (km / (dt / 3600000)).toFixed(0);
-        }
-
-        function autoZoom(speed) {
-            if (speed < 35) currentZoom = 17;
-            else if (speed < 65) currentZoom = 16;
-            else if (speed < 95) currentZoom = 15;
-            else currentZoom = 14;
-        }
-
-        // Main GPS tracking
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition(pos => {
-                const lat = pos.coords.latitude;
-                const lon = pos.coords.longitude;
-                const now = pos.timestamp;
-                const gpsSpeed = pos.coords.speed ? (pos.coords.speed * 3.6).toFixed(0) : null;
-
-                if (lastLat) {
-                    const calcSpeedVal = calcSpeed(lastLat, lastLon, lat, lon, now - lastTime);
-                    speedEl.textContent = `${gpsSpeed || calcSpeedVal} km/h`;
-                    autoZoom(parseFloat(gpsSpeed || calcSpeedVal));
-                }
-
-                updateMap(lat, lon);
-
-                lastLat = lat;
-                lastLon = lon;
-                lastTime = now;
-            }, () => {
-                status.textContent = "❌ Allow Location Access";
-            }, { enableHighAccuracy: true, maximumAge: 1500, timeout: 8000 });
+                updateMap(pos.coords.latitude, pos.coords.longitude);
+            }, err => {
+                status.textContent = "GPS Error – Allow location access";
+            }, {
+                enableHighAccuracy: true,
+                maximumAge: 1000,
+                timeout: 5000
+            });
         }
-
-        function recenter() {
-            if (lastLat && lastLon) updateMap(lastLat, lastLon);
-        }
-
-        // Better Navigation (opens Waze with route)
-        function navigateTo() {
-            const query = searchInput.value.trim();
-            if (!query) return alert("Please enter a destination");
-
-            const url = `https://www.waze.com/ul?navigate=yes&q=${encodeURIComponent(query)}`;
-            window.open(url, '_blank');
-        }
-
-        // Focus Waze built-in search (has live suggestions)
-        function searchOnMap() {
-            // This tricks the iframe to show its search more prominently
-            iframe.contentWindow.focus();
-            alert("✅ Use the search bar in the bottom-left corner of the Waze map for live suggestions and routing.");
-        }
-
-        // Enter key support
-        searchInput.addEventListener("keypress", e => {
-            if (e.key === "Enter") navigateTo();
-        });
     </script>
 </body>
 </html>
