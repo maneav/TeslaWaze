@@ -12,18 +12,18 @@
         
         #controls {
             position: absolute; top: 15px; left: 15px; right: 15px; z-index: 100;
-            background: rgba(0,0,0,0.85); padding: 12px; border-radius: 12px;
-            display: flex; gap: 10px; flex-wrap: wrap;
+            background: rgba(0,0,0,0.9); padding: 12px; border-radius: 12px;
+            display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
         }
-        input { flex: 1; padding: 12px; border-radius: 8px; border: none; font-size: 16px; min-width: 200px; }
+        input { flex: 1; padding: 14px; border-radius: 8px; border: none; font-size: 17px; min-width: 220px; }
         button {
-            padding: 12px 18px; border: none; border-radius: 8px; background: #cc0000;
-            color: white; font-size: 16px; cursor: pointer;
+            padding: 14px 20px; border: none; border-radius: 8px; background: #cc0000;
+            color: white; font-size: 16px; cursor: pointer; white-space: nowrap;
         }
         button:hover { background: #ff0000; }
 
         #status {
-            position: absolute; bottom: 80px; left: 15px; background: rgba(0,0,0,0.85);
+            position: absolute; bottom: 85px; left: 15px; background: rgba(0,0,0,0.85);
             color: #fff; padding: 10px 16px; border-radius: 12px; font-size: 15px; z-index: 100;
         }
         #speed {
@@ -37,8 +37,9 @@
 
     <div id="container">
         <div id="controls">
-            <input type="text" id="search" placeholder="Search destination (address, city...)" />
-            <button onclick="goToDestination()">🚗 Go</button>
+            <input type="text" id="search" placeholder="Enter destination (e.g. Toronto, 123 Main St)" />
+            <button onclick="navigateTo()">🚗 Navigate</button>
+            <button onclick="searchOnMap()">🔎 Search on Map</button>
             <button onclick="recenter()">📍 Recenter</button>
         </div>
         
@@ -60,9 +61,8 @@
         let lastLat = null, lastLon = null, lastTime = null;
         let currentZoom = 16;
 
-        function updateMap(lat, lon, zoom = null) {
-            const z = zoom || currentZoom;
-            iframe.src = `https://embed.waze.com/iframe?zoom=${z}&lat=${lat}&lon=${lon}&pin=1`;
+        function updateMap(lat, lon) {
+            iframe.src = `https://embed.waze.com/iframe?zoom=${currentZoom}&lat=${lat}&lon=${lon}&pin=1`;
             status.textContent = `Live • ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
         }
 
@@ -77,25 +77,24 @@
         }
 
         function autoZoom(speed) {
-            if (speed < 30) currentZoom = 17;      // Slow city
-            else if (speed < 60) currentZoom = 16;
-            else if (speed < 90) currentZoom = 15;
-            else currentZoom = 14;                 // Highway
+            if (speed < 35) currentZoom = 17;
+            else if (speed < 65) currentZoom = 16;
+            else if (speed < 95) currentZoom = 15;
+            else currentZoom = 14;
         }
 
+        // Main GPS tracking
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition(pos => {
                 const lat = pos.coords.latitude;
                 const lon = pos.coords.longitude;
                 const now = pos.timestamp;
-                const speed = pos.coords.speed ? (pos.coords.speed * 3.6).toFixed(0) : null; // m/s → km/h
+                const gpsSpeed = pos.coords.speed ? (pos.coords.speed * 3.6).toFixed(0) : null;
 
-                // Update map with auto zoom
                 if (lastLat) {
-                    const calculatedSpeed = calcSpeed(lastLat, lastLon, lat, lon, now - lastTime);
-                    const displaySpeed = speed || calculatedSpeed;
-                    speedEl.textContent = `${displaySpeed} km/h`;
-                    autoZoom(parseFloat(displaySpeed));
+                    const calcSpeedVal = calcSpeed(lastLat, lastLon, lat, lon, now - lastTime);
+                    speedEl.textContent = `${gpsSpeed || calcSpeedVal} km/h`;
+                    autoZoom(parseFloat(gpsSpeed || calcSpeedVal));
                 }
 
                 updateMap(lat, lon);
@@ -103,36 +102,34 @@
                 lastLat = lat;
                 lastLon = lon;
                 lastTime = now;
-
-            }, err => {
-                status.textContent = "❌ Allow Location Access in Tesla Browser";
-            }, {
-                enableHighAccuracy: true,
-                maximumAge: 1500,
-                timeout: 8000
-            });
+            }, () => {
+                status.textContent = "❌ Allow Location Access";
+            }, { enableHighAccuracy: true, maximumAge: 1500, timeout: 8000 });
         }
 
-        // Manual Recenter
         function recenter() {
-            if (lastLat && lastLon) {
-                updateMap(lastLat, lastLon, 16);
-            }
+            if (lastLat && lastLon) updateMap(lastLat, lastLon);
         }
 
-        // Search + Route
-        function goToDestination() {
+        // Better Navigation (opens Waze with route)
+        function navigateTo() {
             const query = searchInput.value.trim();
-            if (!query) return alert("Enter a destination");
+            if (!query) return alert("Please enter a destination");
 
-            // Open Waze navigation in new tab (works better in Tesla browser)
-            const wazeUrl = `https://www.waze.com/ul?navigate=yes&q=${encodeURIComponent(query)}`;
-            window.open(wazeUrl, '_blank');
+            const url = `https://www.waze.com/ul?navigate=yes&q=${encodeURIComponent(query)}`;
+            window.open(url, '_blank');
         }
 
-        // Allow pressing Enter in search box
+        // Focus Waze built-in search (has live suggestions)
+        function searchOnMap() {
+            // This tricks the iframe to show its search more prominently
+            iframe.contentWindow.focus();
+            alert("✅ Use the search bar in the bottom-left corner of the Waze map for live suggestions and routing.");
+        }
+
+        // Enter key support
         searchInput.addEventListener("keypress", e => {
-            if (e.key === "Enter") goToDestination();
+            if (e.key === "Enter") navigateTo();
         });
     </script>
 </body>
