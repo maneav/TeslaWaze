@@ -6,20 +6,17 @@
     <title>Waze Live • Tesla Smooth</title>
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
-        body, html { height:100%; overflow:hidden; background:#000; font-family: sans-serif; }
+        body, html { height:100%; overflow:hidden; background:#000; font-family:sans-serif; }
         #container { width:100%; height:100vh; position:relative; }
-
-        iframe { 
-            position: absolute; top:0; left:0; width:100%; height:100%; 
-            border:none; 
-            transition: opacity 0.3s ease-in-out;
-            /* GPU acceleration hints for Tesla browser */
+        iframe {
+            position: absolute; top:0; left:0; width:100%; height:100%;
+            border:none;
+            transition: opacity 0.4s ease-in-out;
             will-change: opacity;
             transform: translateZ(0);
         }
         .hidden { opacity: 0; z-index: 1; pointer-events: none; }
         .visible { opacity: 1; z-index: 2; }
-
         #speed {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
             background: rgba(0,0,0,0.9); color: #00ff00; padding: 8px 25px;
@@ -27,42 +24,55 @@
             border: 2px solid #222; pointer-events: none;
             box-shadow: 0 0 10px rgba(0,255,0,0.3);
         }
+        #status {
+            position: absolute; top: 10px; left: 10px; color: #aaa; font-size: 12px; z-index: 100;
+        }
     </style>
 </head>
 <body>
     <div id="container">
-        <!-- Double Buffer -->
         <iframe id="wazeA" class="visible" src="about:blank"></iframe>
         <iframe id="wazeB" class="hidden" src="about:blank"></iframe>
-        
         <div id="speed">0</div>
+        <div id="status">Initializing...</div>
     </div>
 
     <script>
-        let activeIframe = document.getElementById('wazeA');
-        let hiddenIframe = document.getElementById('wazeB');
+        let active = document.getElementById('wazeA');
+        let hidden = document.getElementById('wazeB');
         const speedEl = document.getElementById('speed');
+        const statusEl = document.getElementById('status');
 
         let lastLat = 43.65;
         let lastLon = -79.38;
         let lastUpdate = 0;
-        const UPDATE_INTERVAL = 7000;        // ms between map updates
-        const MIN_DISTANCE_METERS = 100;     // only update if moved this far
+        const UPDATE_INTERVAL = 6000;   // 6 seconds
+        const MIN_DISTANCE = 80;        // meters (slightly more forgiving)
 
-        // Haversine distance (approx) in meters
         function distance(lat1, lon1, lat2, lon2) {
-            const R = 6371000; // Earth radius in meters
+            const R = 6371000;
             const dLat = (lat2 - lat1) * Math.PI / 180;
             const dLon = (lon2 - lon1) * Math.PI / 180;
-            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                      Math.sin(dLon/2) * Math.sin(dLon/2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            return R * c;
+            const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
         }
 
-        function buildWazeUrl(lat, lon) {
-            return `https://embed.waze.com/iframe?zoom=15&lat=${lat}&lon=${lon}&pin=1&ct=livemap&language_code=en-GB`;
+        function buildUrl(lat, lon) {
+            return `https://embed.waze.com/iframe?zoom=16&lat=${lat.toFixed(6)}&lon=${lon.toFixed(6)}&pin=1&ct=livemap&language_code=en`;
+        }
+
+        function forceRefreshIframe(iframe) {
+            iframe.src = 'about:blank';
+            // Small delay helps Tesla browser actually reload next src
+            setTimeout(() => {
+                iframe.src = buildUrl(lastLat, lastLon);
+            }, 50);
+        }
+
+        function swapIframes() {
+            [active, hidden] = [hidden, active];
+            active.className = 'visible';
+            hidden.className = 'hidden';
         }
 
         function updateMap(lat, lon) {
@@ -70,48 +80,57 @@
             if (now - lastUpdate < UPDATE_INTERVAL) return;
 
             const dist = distance(lastLat, lastLon, lat, lon);
-            if (dist < MIN_DISTANCE_METERS) return;
+            if (dist < MIN_DISTANCE) return;
 
-            // Load new map into hidden iframe
-            hiddenIframe.src = buildWazeUrl(lat, lon);
+            statusEl.textContent = `Updating map... (${dist.toFixed(0)}m)`;
 
-            hiddenIframe.onload = () => {
-                // Swap
-                hiddenIframe.className = 'visible';
-                activeIframe.className = 'hidden';
+            // Load into hidden
+            hidden.src = buildUrl(lat, lon);
 
-                // Swap references
-                [activeIframe, hiddenIframe] = [hiddenIframe, activeIframe];
-
+            const timeout = setTimeout(() => {
+                // Fallback if onload never fires (common in Tesla)
+                console.log("onload timeout → forcing swap");
+                swapIframes();
                 lastLat = lat;
                 lastLon = lon;
                 lastUpdate = now;
-
-                // Persist for next page refresh
                 localStorage.setItem('lastWazeLat', lat);
                 localStorage.setItem('lastWazeLon', lon);
+                statusEl.textContent = 'Map updated (forced)';
+            }, 4500);
+
+            hidden.onload = () => {
+                clearTimeout(timeout);
+                swapIframes();
+                lastLat = lat;
+                lastLon = lon;
+                lastUpdate = now;
+                localStorage.setItem('lastWazeLat', lat);
+                localStorage.setItem('lastWazeLon', lon);
+                statusEl.textContent = 'Map updated';
             };
 
-            // Safety fallback if load fails
-            hiddenIframe.onerror = () => {
-                console.warn('Waze iframe load failed – retrying next cycle');
-                hiddenIframe.src = 'about:blank';
+            hidden.onerror = () => {
+                clearTimeout(timeout);
+                console.warn("Waze load error");
+                statusEl.textContent = 'Waze load failed';
+                forceRefreshIframe(hidden);
             };
         }
 
-        // Load last known position immediately on page refresh (eliminates blank screen)
-        function preloadLastPosition() {
+        // Preload last position
+        function preload() {
             const savedLat = localStorage.getItem('lastWazeLat');
             const savedLon = localStorage.getItem('lastWazeLon');
             if (savedLat && savedLon) {
                 lastLat = parseFloat(savedLat);
                 lastLon = parseFloat(savedLon);
             }
-            // Preload active iframe instantly
-            activeIframe.src = buildWazeUrl(lastLat, lastLon);
+            active.src = buildUrl(lastLat, lastLon);
+            statusEl.textContent = 'Loaded last position';
         }
 
-        // Geolocation
+        // Main geolocation
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition(pos => {
                 const { latitude, longitude, speed } = pos.coords;
@@ -120,14 +139,27 @@
 
                 updateMap(latitude, longitude);
             }, 
-            err => console.warn('Geolocation error:', err),
-            { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 });
-        } else {
-            console.warn('Geolocation not supported');
+            err => {
+                console.error('Geo error:', err);
+                statusEl.textContent = `Geo error: ${err.code}`;
+            }, 
+            { 
+                enableHighAccuracy: true, 
+                maximumAge: 800, 
+                timeout: 8000 
+            });
         }
 
-        // Start everything
-        preloadLastPosition();
+        // Start
+        preload();
+
+        // Occasional forced refresh every 45s as safety net
+        setInterval(() => {
+            if (Date.now() - lastUpdate > 45000) {
+                forceRefreshIframe(active);
+                statusEl.textContent = 'Forced full refresh';
+            }
+        }, 45000);
     </script>
 </body>
 </html>
