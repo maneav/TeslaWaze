@@ -8,27 +8,30 @@
         * { margin:0; padding:0; box-sizing:border-box; }
         body, html { height:100%; overflow:hidden; background:#000; font-family: sans-serif; }
         #container { width:100%; height:100vh; position:relative; }
-        
-        /* Smooth transition for the swap */
+
         iframe { 
             position: absolute; top:0; left:0; width:100%; height:100%; 
-            border:none; transition: opacity 0.4s ease-in-out; 
+            border:none; 
+            transition: opacity 0.3s ease-in-out;
+            /* GPU acceleration hints for Tesla browser */
+            will-change: opacity;
+            transform: translateZ(0);
         }
         .hidden { opacity: 0; z-index: 1; pointer-events: none; }
         .visible { opacity: 1; z-index: 2; }
-        
+
         #speed {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
             background: rgba(0,0,0,0.9); color: #00ff00; padding: 8px 25px;
             border-radius: 50px; font-size: 32px; font-weight: bold; z-index: 100;
             border: 2px solid #222; pointer-events: none;
+            box-shadow: 0 0 10px rgba(0,255,0,0.3);
         }
     </style>
 </head>
 <body>
-
     <div id="container">
-        <!-- Double Buffer Iframes -->
+        <!-- Double Buffer -->
         <iframe id="wazeA" class="visible" src="about:blank"></iframe>
         <iframe id="wazeB" class="hidden" src="about:blank"></iframe>
         
@@ -40,43 +43,91 @@
         let hiddenIframe = document.getElementById('wazeB');
         const speedEl = document.getElementById('speed');
 
-        let lastLat = 43.65, lastLon = -79.38; 
+        let lastLat = 43.65;
+        let lastLon = -79.38;
         let lastUpdate = 0;
-        const UPDATE_INTERVAL = 8000; 
+        const UPDATE_INTERVAL = 7000;        // ms between map updates
+        const MIN_DISTANCE_METERS = 100;     // only update if moved this far
+
+        // Haversine distance (approx) in meters
+        function distance(lat1, lon1, lat2, lon2) {
+            const R = 6371000; // Earth radius in meters
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        function buildWazeUrl(lat, lon) {
+            return `https://embed.waze.com/iframe?zoom=15&lat=${lat}&lon=${lon}&pin=1&ct=livemap&language_code=en-GB`;
+        }
 
         function updateMap(lat, lon) {
             const now = Date.now();
             if (now - lastUpdate < UPDATE_INTERVAL) return;
 
-            hiddenIframe.src = `https://embed.waze.com/iframe?zoom=15&lat=${lat}&lon=${lon}&pin=1`;
+            const dist = distance(lastLat, lastLon, lat, lon);
+            if (dist < MIN_DISTANCE_METERS) return;
+
+            // Load new map into hidden iframe
+            hiddenIframe.src = buildWazeUrl(lat, lon);
 
             hiddenIframe.onload = () => {
+                // Swap
                 hiddenIframe.className = 'visible';
                 activeIframe.className = 'hidden';
 
-                let temp = activeIframe;
-                activeIframe = hiddenIframe;
-                hiddenIframe = temp;
-                
-                lastUpdate = Date.now();
+                // Swap references
+                [activeIframe, hiddenIframe] = [hiddenIframe, activeIframe];
+
+                lastLat = lat;
+                lastLon = lon;
+                lastUpdate = now;
+
+                // Persist for next page refresh
+                localStorage.setItem('lastWazeLat', lat);
+                localStorage.setItem('lastWazeLon', lon);
+            };
+
+            // Safety fallback if load fails
+            hiddenIframe.onerror = () => {
+                console.warn('Waze iframe load failed – retrying next cycle');
+                hiddenIframe.src = 'about:blank';
             };
         }
 
+        // Load last known position immediately on page refresh (eliminates blank screen)
+        function preloadLastPosition() {
+            const savedLat = localStorage.getItem('lastWazeLat');
+            const savedLon = localStorage.getItem('lastWazeLon');
+            if (savedLat && savedLon) {
+                lastLat = parseFloat(savedLat);
+                lastLon = parseFloat(savedLon);
+            }
+            // Preload active iframe instantly
+            activeIframe.src = buildWazeUrl(lastLat, lastLon);
+        }
+
+        // Geolocation
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition(pos => {
                 const { latitude, longitude, speed } = pos.coords;
-                const kmh = speed ? (speed * 3.6).toFixed(0) : "0";
+                const kmh = speed ? Math.round(speed * 3.6) : 0;
                 speedEl.textContent = kmh;
 
-                lastLat = latitude;
-                lastLon = longitude;
                 updateMap(latitude, longitude);
-                
-            }, null, { enableHighAccuracy: true, maximumAge: 1000 });
+            }, 
+            err => console.warn('Geolocation error:', err),
+            { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 });
+        } else {
+            console.warn('Geolocation not supported');
         }
 
-        // Initial Load
-        updateMap(lastLat, lastLon);
+        // Start everything
+        preloadLastPosition();
     </script>
 </body>
 </html>
