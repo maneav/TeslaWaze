@@ -3,38 +3,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Waze Live • Tesla</title>
+    <title>Waze Live • Tesla Smooth</title>
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
-        body, html { height:100%; overflow:hidden; background:#000; }
+        body, html { height:100%; overflow:hidden; background:#000; font-family: sans-serif; }
         #container { width:100%; height:100vh; position:relative; }
+        
+        /* Smooth transition for the swap */
         iframe { 
-            width:100%; height:100%; border:none; 
-            transition: opacity 0.3s; 
+            position: absolute; top:0; left:0; width:100%; height:100%; 
+            border:none; transition: opacity 0.4s ease-in-out; 
         }
+        .hidden { opacity: 0; z-index: 1; pointer-events: none; }
+        .visible { opacity: 1; z-index: 2; }
         
         #controls {
-            position: absolute; top: 15px; left: 15px; right: 15px; z-index: 100;
-            background: rgba(0,0,0,0.9); padding: 12px; border-radius: 12px;
-            display: flex; gap: 8px; flex-wrap: wrap;
+            position: absolute; top: 15px; left: 15px; z-index: 100;
+            background: rgba(0,0,0,0.8); padding: 10px; border-radius: 12px;
+            display: flex; gap: 8px;
         }
         button {
-            padding: 12px 18px; border: none; border-radius: 8px; background: #cc0000;
-            color: white; font-size: 16px; cursor: pointer;
+            padding: 10px 15px; border: none; border-radius: 8px; background: #333;
+            color: white; font-size: 14px; cursor: pointer; border: 1px solid #444;
         }
         #status {
-            position: absolute; bottom: 85px; left: 15px; background: rgba(0,0,0,0.85);
-            color: #fff; padding: 10px 16px; border-radius: 12px; font-size: 15px; z-index: 100;
+            position: absolute; bottom: 85px; left: 15px; background: rgba(0,0,0,0.7);
+            color: #ccc; padding: 6px 12px; border-radius: 8px; font-size: 12px; z-index: 100;
         }
         #speed {
-            position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%);
-            background: rgba(0,0,0,0.85); color: #00ff00; padding: 10px 30px;
-            border-radius: 50px; font-size: 26px; font-weight: bold; z-index: 100;
-        }
-        #overlay {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background: rgba(0,0,0,0.7); color: #fff; padding: 12px 24px; border-radius: 12px;
-            font-size: 16px; z-index: 200; display: none;
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.9); color: #00ff00; padding: 8px 25px;
+            border-radius: 50px; font-size: 32px; font-weight: bold; z-index: 100;
+            border: 2px solid #222;
         }
     </style>
 </head>
@@ -42,92 +42,81 @@
 
     <div id="container">
         <div id="controls">
-            <button onclick="togglePause()">⏸️ Pause</button>
+            <button id="pauseBtn" onclick="togglePause()">⏸️ Pause</button>
             <button onclick="recenter()">📍 Recenter</button>
         </div>
         
-        <iframe id="waze" 
-                src="https://embed.waze.com/iframe?zoom=15&lat=44.0192&lon=-79.4443&pin=1" 
-                allowfullscreen>
-        </iframe>
+        <!-- Double Buffer Iframes -->
+        <iframe id="wazeA" class="visible" src="about:blank"></iframe>
+        <iframe id="wazeB" class="hidden" src="about:blank"></iframe>
         
-        <div id="status">Waiting for Tesla GPS...</div>
-        <div id="speed">0 km/h</div>
-        <div id="overlay">Updating map...</div>
+        <div id="status">Connecting to GPS...</div>
+        <div id="speed">0</div>
     </div>
 
     <script>
-        const iframe = document.getElementById('waze');
+        let activeIframe = document.getElementById('wazeA');
+        let hiddenIframe = document.getElementById('wazeB');
         const status = document.getElementById('status');
         const speedEl = document.getElementById('speed');
-        const overlay = document.getElementById('overlay');
 
-        let lastLat = null, lastLon = null, lastTime = null;
+        let lastLat = 43.65, lastLon = -79.38; // Default coords
         let isPaused = false;
         let lastUpdate = 0;
+        const UPDATE_INTERVAL = 8000; // 8 seconds is safer for Tesla's CPU
 
         function updateMap(lat, lon) {
             const now = Date.now();
-            if (isPaused || now - lastUpdate < 5000) return; // Update only every 4 seconds
+            if (isPaused || (now - lastUpdate < UPDATE_INTERVAL)) return;
 
-            overlay.style.display = 'block';
-            iframe.style.opacity = '0.3'; // fade out slightly
+            // Load the new location into the HIDDEN iframe
+            hiddenIframe.src = `https://embed.waze.com/iframe?zoom=16&lat=${lat}&lon=${lon}&pin=1`;
 
-            iframe.onload = () => {
-                iframe.style.opacity = '1';
-                overlay.style.display = 'none';
+            // Wait for it to finish loading before swapping
+            hiddenIframe.onload = () => {
+                // Swap classes
+                hiddenIframe.className = 'visible';
+                activeIframe.className = 'hidden';
+
+                // Swap variable references
+                let temp = activeIframe;
+                activeIframe = hiddenIframe;
+                hiddenIframe = temp;
+                
+                status.textContent = `Live • ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+                lastUpdate = Date.now();
             };
-
-            iframe.src = `https://embed.waze.com/iframe?zoom=15&lat=${lat}&lon=${lon}&pin=1`;
-            status.textContent = `Live • ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-            lastUpdate = now;
-        }
-
-        function calcSpeed(lat1, lon1, lat2, lon2, dt) {
-            const R = 6371;
-            const dLat = (lat2 - lat1) * Math.PI / 180;
-            const dLon = (lon2 - lon1) * Math.PI / 180;
-            const a = Math.sin(dLat/2)**2 + Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) * Math.sin(dLon/2)**2;
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            const km = R * c;
-            return (km / (dt / 3600000)).toFixed(0);
         }
 
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition(pos => {
-                if (isPaused) return;
+                const { latitude, longitude, speed } = pos.coords;
                 
-                const lat = pos.coords.latitude;
-                const lon = pos.coords.longitude;
-                const now = pos.timestamp;
+                // Use car's native speed (m/s) if available, else 0
+                const kmh = speed ? (speed * 3.6).toFixed(0) : "0";
+                speedEl.textContent = kmh;
 
-                if (lastLat) {
-                    const calculatedSpeed = calcSpeed(lastLat, lastLon, lat, lon, now - lastTime);
-                    speedEl.textContent = `${calculatedSpeed} km/h`;
-                }
-
-                updateMap(lat, lon);
-
-                lastLat = lat;
-                lastLon = lon;
-                lastTime = now;
-            }, () => {
-                status.textContent = "❌ Allow Location Access";
-            }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 8000 });
+                lastLat = latitude;
+                lastLon = longitude;
+                updateMap(latitude, longitude);
+                
+            }, err => {
+                status.textContent = "GPS Error: " + err.message;
+            }, { enableHighAccuracy: true, maximumAge: 1000 });
         }
 
         function recenter() {
-            if (lastLat && lastLon) {
-                iframe.src = `https://embed.waze.com/iframe?zoom=15&lat=${lastLat}&lon=${lastLon}&pin=1`;
-            }
+            updateMap(lastLat, lastLon);
         }
 
         function togglePause() {
             isPaused = !isPaused;
-            const btn = document.querySelector('#controls button');
-            btn.textContent = isPaused ? '▶️ Resume' : '⏸️ Pause';
-            status.textContent = isPaused ? 'Tracking PAUSED' : 'Live tracking active';
+            document.getElementById('pauseBtn').textContent = isPaused ? '▶️ Resume' : '⏸️ Pause';
+            status.textContent = isPaused ? 'Tracking PAUSED' : 'Live';
         }
+
+        // Initial Load
+        recenter();
     </script>
 </body>
 </html>
