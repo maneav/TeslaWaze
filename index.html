@@ -6,21 +6,22 @@
     <title>Waze Live • Tesla</title>
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
-        body, html { height:100%; overflow:hidden; background:#000; font-family:system-ui,sans-serif; }
+        body, html { height:100%; overflow:hidden; background:#000; }
         #container { width:100%; height:100vh; position:relative; }
-        iframe { width:100%; height:100%; border:none; }
+        iframe { 
+            width:100%; height:100%; border:none; 
+            transition: opacity 0.3s; 
+        }
         
         #controls {
             position: absolute; top: 15px; left: 15px; right: 15px; z-index: 100;
             background: rgba(0,0,0,0.9); padding: 12px; border-radius: 12px;
-            display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+            display: flex; gap: 8px; flex-wrap: wrap;
         }
-        input { flex: 1; padding: 14px; border-radius: 8px; border: none; font-size: 17px; }
         button {
-            padding: 14px 20px; border: none; border-radius: 8px; background: #cc0000;
+            padding: 12px 18px; border: none; border-radius: 8px; background: #cc0000;
             color: white; font-size: 16px; cursor: pointer;
         }
-
         #status {
             position: absolute; bottom: 85px; left: 15px; background: rgba(0,0,0,0.85);
             color: #fff; padding: 10px 16px; border-radius: 12px; font-size: 15px; z-index: 100;
@@ -30,46 +31,56 @@
             background: rgba(0,0,0,0.85); color: #00ff00; padding: 10px 30px;
             border-radius: 50px; font-size: 26px; font-weight: bold; z-index: 100;
         }
+        #overlay {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.7); color: #fff; padding: 12px 24px; border-radius: 12px;
+            font-size: 16px; z-index: 200; display: none;
+        }
     </style>
 </head>
 <body>
 
     <div id="container">
         <div id="controls">
-            <input type="text" id="search" placeholder="Enter destination..." />
-            <button onclick="navigateTo()">🚗 Navigate</button>
+            <button onclick="togglePause()">⏸️ Pause</button>
             <button onclick="recenter()">📍 Recenter</button>
         </div>
         
         <iframe id="waze" 
-                src="https://embed.waze.com/iframe?zoom=15&lat=43.65&lon=-79.38&pin=1" 
+                src="https://embed.waze.com/iframe?zoom=16&lat=43.65&lon=-79.38&pin=1" 
                 allowfullscreen>
         </iframe>
         
-        <div id="status">Waiting for GPS...</div>
+        <div id="status">Waiting for Tesla GPS...</div>
         <div id="speed">0 km/h</div>
+        <div id="overlay">Updating map...</div>
     </div>
 
     <script>
         const iframe = document.getElementById('waze');
         const status = document.getElementById('status');
         const speedEl = document.getElementById('speed');
-        const searchInput = document.getElementById('search');
+        const overlay = document.getElementById('overlay');
 
         let lastLat = null, lastLon = null, lastTime = null;
-        let lastUpdateTime = 0;
-        let currentZoom = 16;
+        let isPaused = false;
+        let lastUpdate = 0;
 
         function updateMap(lat, lon) {
             const now = Date.now();
-            // Throttle: update less often at higher speeds
-            const minInterval = currentZoom <= 15 ? 5000 : 3500; // 5s on highway, 3.5s in city
+            if (isPaused || now - lastUpdate < 5000) return; // Update only every 4 seconds
 
-            if (now - lastUpdateTime < minInterval) return;
+            overlay.style.display = 'block';
+            iframe.style.opacity = '0.3'; // fade out slightly
 
-            iframe.src = `https://embed.waze.com/iframe?zoom=${currentZoom}&lat=${lat}&lon=${lon}&pin=1`;
+            iframe.onload = () => {
+                iframe.style.opacity = '1';
+                overlay.style.display = 'none';
+            };
+
+            iframe.src = `https://embed.waze.com/iframe?zoom=16&lat=${lat}&lon=${lon}&pin=1`;
             status.textContent = `Live • ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-            lastUpdateTime = now;
+            lastUpdate = now;
         }
 
         function calcSpeed(lat1, lon1, lat2, lon2, dt) {
@@ -82,25 +93,17 @@
             return (km / (dt / 3600000)).toFixed(0);
         }
 
-        function autoZoom(speed) {
-            if (speed < 40) currentZoom = 17;
-            else if (speed < 70) currentZoom = 16;
-            else if (speed < 100) currentZoom = 15;
-            else currentZoom = 14;
-        }
-
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition(pos => {
+                if (isPaused) return;
+                
                 const lat = pos.coords.latitude;
                 const lon = pos.coords.longitude;
                 const now = pos.timestamp;
-                const gpsSpeed = pos.coords.speed ? (pos.coords.speed * 3.6).toFixed(0) : null;
 
                 if (lastLat) {
-                    const calcSpeedVal = calcSpeed(lastLat, lastLon, lat, lon, now - lastTime);
-                    const displaySpeed = gpsSpeed || calcSpeedVal;
-                    speedEl.textContent = `${displaySpeed} km/h`;
-                    autoZoom(parseFloat(displaySpeed));
+                    const calculatedSpeed = calcSpeed(lastLat, lastLon, lat, lon, now - lastTime);
+                    speedEl.textContent = `${calculatedSpeed} km/h`;
                 }
 
                 updateMap(lat, lon);
@@ -108,32 +111,23 @@
                 lastLat = lat;
                 lastLon = lon;
                 lastTime = now;
-
             }, () => {
                 status.textContent = "❌ Allow Location Access";
-            }, { 
-                enableHighAccuracy: true, 
-                maximumAge: 2000, 
-                timeout: 10000 
-            });
+            }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 8000 });
         }
 
         function recenter() {
             if (lastLat && lastLon) {
-                lastUpdateTime = 0; // Force immediate update
-                updateMap(lastLat, lastLon);
+                iframe.src = `https://embed.waze.com/iframe?zoom=16&lat=${lastLat}&lon=${lastLon}&pin=1`;
             }
         }
 
-        function navigateTo() {
-            const query = searchInput.value.trim();
-            if (!query) return alert("Enter a destination");
-            window.open(`https://www.waze.com/ul?navigate=yes&q=${encodeURIComponent(query)}`, '_blank');
+        function togglePause() {
+            isPaused = !isPaused;
+            const btn = document.querySelector('#controls button');
+            btn.textContent = isPaused ? '▶️ Resume' : '⏸️ Pause';
+            status.textContent = isPaused ? 'Tracking PAUSED' : 'Live tracking active';
         }
-
-        searchInput.addEventListener("keypress", e => {
-            if (e.key === "Enter") navigateTo();
-        });
     </script>
 </body>
 </html>
