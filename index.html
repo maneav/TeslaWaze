@@ -18,12 +18,12 @@
         iframe {
             position: absolute; top:0; left:0; width:100%; height:100%;
             border:none;
-            transition: opacity 0.12s ease-in-out;   /* Very fast & smooth */
+            transition: opacity 0.2s ease-in-out;
             will-change: opacity;
             transform: translateZ(0);
             -webkit-backface-visibility: hidden;
             backface-visibility: hidden;
-            background: #000;                        /* Prevents white flash */
+            background: #000;
         }
 
         .hidden { 
@@ -43,11 +43,6 @@
             border: 2px solid #222; pointer-events: none;
             box-shadow: 0 0 10px rgba(0,255,0,0.3);
         }
-
-        #status {
-            position: absolute; top: 10px; left: 10px; color: #aaa; font-size: 13px; z-index: 100;
-            background: rgba(0,0,0,0.6); padding: 4px 10px; border-radius: 4px;
-        }
     </style>
 </head>
 <body>
@@ -56,21 +51,20 @@
         <iframe id="wazeB" class="hidden" src="about:blank" allow="geolocation" allowfullscreen></iframe>
         
         <div id="speed">0</div>
-        <div id="status">Initializing Waze...</div>
     </div>
 
     <script>
         let active = document.getElementById('wazeA');
         let hidden = document.getElementById('wazeB');
         const speedEl = document.getElementById('speed');
-        const statusEl = document.getElementById('status');
 
         let lastLat = 43.65;
         let lastLon = -79.38;
         let lastUpdate = 0;
 
-        const UPDATE_INTERVAL = 5500;   // ms
-        const MIN_DISTANCE = 75;        // meters
+        const UPDATE_INTERVAL = 5500;
+        const MIN_DISTANCE = 75;
+        const SWAP_DELAY_AFTER_LOAD = 350;   // ← You can change this (150-400)
 
         function distance(lat1, lon1, lat2, lon2) {
             const R = 6371000;
@@ -88,13 +82,10 @@
 
         function forceRefreshIframe(iframe) {
             iframe.src = 'about:blank';
-            setTimeout(() => {
-                iframe.src = buildUrl(lastLat, lastLon);
-            }, 80);
+            setTimeout(() => iframe.src = buildUrl(lastLat, lastLon), 80);
         }
 
-        function swapIframes() {
-            // Disable transition for instant layer change
+        function instantSwap() {
             hidden.style.transition = 'none';
             active.style.transition = 'none';
 
@@ -103,11 +94,10 @@
             active.className = 'visible';
             hidden.className = 'hidden';
 
-            // Re-enable smooth transition
             setTimeout(() => {
-                active.style.transition = 'opacity 0.12s ease-in-out';
-                hidden.style.transition = 'opacity 0.12s ease-in-out';
-            }, 20);
+                active.style.transition = 'opacity 0.2s ease-in-out';
+                hidden.style.transition = 'opacity 0.2s ease-in-out';
+            }, 50);
         }
 
         function updateMap(lat, lon) {
@@ -117,35 +107,32 @@
             const dist = distance(lastLat, lastLon, lat, lon);
             if (dist < MIN_DISTANCE) return;
 
-            statusEl.textContent = `Updating... (${Math.round(dist)}m)`;
-
             hidden.src = buildUrl(lat, lon);
 
             const timeout = setTimeout(() => {
-                // Fallback if onload doesn't fire
-                swapIframes();
-                lastLat = lat;
-                lastLon = lon;
+                instantSwap();
+                lastLat = lat; 
+                lastLon = lon; 
                 lastUpdate = now;
                 localStorage.setItem('lastWazeLat', lat);
                 localStorage.setItem('lastWazeLon', lon);
-                statusEl.textContent = 'Map updated (forced)';
-            }, 4000);
+            }, 4200);
 
             hidden.onload = () => {
                 clearTimeout(timeout);
-                swapIframes();
-                lastLat = lat;
-                lastLon = lon;
-                lastUpdate = now;
-                localStorage.setItem('lastWazeLat', lat);
-                localStorage.setItem('lastWazeLon', lon);
-                statusEl.textContent = 'Map updated';
+                
+                setTimeout(() => {
+                    instantSwap();
+                    lastLat = lat;
+                    lastLon = lon;
+                    lastUpdate = now;
+                    localStorage.setItem('lastWazeLat', lat);
+                    localStorage.setItem('lastWazeLon', lon);
+                }, SWAP_DELAY_AFTER_LOAD);
             };
 
             hidden.onerror = () => {
                 clearTimeout(timeout);
-                statusEl.textContent = 'Load error - retrying';
                 forceRefreshIframe(hidden);
             };
         }
@@ -158,10 +145,8 @@
                 lastLon = parseFloat(savedLon);
             }
             active.src = buildUrl(lastLat, lastLon);
-            statusEl.textContent = 'Loaded last position';
         }
 
-        // Geolocation
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition(pos => {
                 const { latitude, longitude, speed } = pos.coords;
@@ -170,25 +155,16 @@
 
                 updateMap(latitude, longitude);
             },
-            err => {
-                console.error('Geolocation error:', err);
-                statusEl.textContent = `Geo error (${err.code})`;
-            },
-            { 
-                enableHighAccuracy: true, 
-                maximumAge: 800, 
-                timeout: 8000 
-            });
+            err => console.error('Geolocation error:', err),
+            { enableHighAccuracy: true, maximumAge: 800, timeout: 8000 });
         }
 
-        // Start
         preloadLastPosition();
 
-        // Safety net: full refresh every 45 seconds if no update happened
+        // Safety refresh
         setInterval(() => {
             if (Date.now() - lastUpdate > 45000) {
                 forceRefreshIframe(active);
-                statusEl.textContent = 'Safety refresh';
             }
         }, 45000);
     </script>
