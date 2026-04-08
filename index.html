@@ -47,7 +47,7 @@
         </div>
         
         <iframe id="waze" 
-                src="https://embed.waze.com/iframe?zoom=26&lat=44.0192&lon=-79.4443&pin=1" 
+                src="https://embed.waze.com/iframe?zoom=10&lat=44.0192&lon=-79.4443&pin=1" 
                 allowfullscreen>
         </iframe>
         
@@ -78,7 +78,7 @@
                 overlay.style.display = 'none';
             };
 
-            iframe.src = `https://embed.waze.com/iframe?zoom=26&lat=${lat}&lon=${lon}&pin=1`;
+            iframe.src = `https://embed.waze.com/iframe?zoom=10&lat=${lat}&lon=${lon}&pin=1`;
             status.textContent = `Live • ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
             lastUpdate = now;
         }
@@ -118,7 +118,7 @@
 
         function recenter() {
             if (lastLat && lastLon) {
-                iframe.src = `https://embed.waze.com/iframe?zoom=26&lat=${lastLat}&lon=${lastLon}&pin=1`;
+                iframe.src = `https://embed.waze.com/iframe?zoom=10&lat=${lastLat}&lon=${lastLon}&pin=1`;
             }
         }
 
