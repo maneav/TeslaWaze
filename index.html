@@ -48,7 +48,7 @@
             const now = Date.now();
             if (now - lastUpdate < UPDATE_INTERVAL) return;
 
-            hiddenIframe.src = `https://embed.waze.com/iframe?zoom=15&lat=${lat}&lon=${lon}&pin=1&_=${now}`;
+            hiddenIframe.src = `https://embed.waze.com/iframe?zoom=16&lat=${lat}&lon=${lon}&pin=1&_=${now}`;
 
             hiddenIframe.onload = () => {
                 hiddenIframe.className = 'visible';
