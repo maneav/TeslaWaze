@@ -3,38 +3,46 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Waze Live • Tesla Smooth</title>
+    <title>Waze Stealth • Tesla</title>
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
         body, html { height:100%; overflow:hidden; background:#000; font-family: sans-serif; }
-        #container { width:100%; height:100vh; position:relative; }
         
-        /* Smooth transition for the swap */
-        iframe { 
-            position: absolute; top:0; left:0; width:100%; height:100%; 
-            border:none; transition: opacity 0.4s ease-in-out; 
+        /* Container clips the search box (approx 65px from top) */
+        #container { 
+            width:100%; height:100vh; position:relative; 
+            overflow: hidden; 
         }
+        
+        iframe { 
+            position: absolute; 
+            top: -65px; left: 0; 
+            width: 100%; 
+            height: calc(100% + 65px); 
+            border:none; 
+            transition: opacity 0.5s ease-in-out;
+            /* Force Dark Mode via CSS Filter */
+            filter: invert(90%) hue-rotate(180deg) brightness(95%) contrast(110%);
+        }
+
         .hidden { opacity: 0; z-index: 1; pointer-events: none; }
         .visible { opacity: 1; z-index: 2; }
         
         #controls {
             position: absolute; top: 15px; left: 15px; z-index: 100;
-            background: rgba(0,0,0,0.8); padding: 10px; border-radius: 12px;
-            display: flex; gap: 8px;
+            background: rgba(30,30,30,0.85); padding: 8px; border-radius: 10px;
+            display: flex; gap: 8px; border: 1px solid #444;
         }
         button {
-            padding: 10px 15px; border: none; border-radius: 8px; background: #333;
-            color: white; font-size: 14px; cursor: pointer; border: 1px solid #444;
+            padding: 8px 14px; border: none; border-radius: 6px; background: #222;
+            color: #eee; font-size: 14px; cursor: pointer;
         }
-        #status {
-            position: absolute; bottom: 85px; left: 15px; background: rgba(0,0,0,0.7);
-            color: #ccc; padding: 6px 12px; border-radius: 8px; font-size: 12px; z-index: 100;
-        }
+        
         #speed {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            background: rgba(0,0,0,0.9); color: #00ff00; padding: 8px 25px;
-            border-radius: 50px; font-size: 32px; font-weight: bold; z-index: 100;
-            border: 2px solid #222;
+            background: rgba(0,0,0,0.9); color: #00ff00; padding: 10px 35px;
+            border-radius: 50px; font-size: 38px; font-weight: bold; z-index: 100;
+            border: 2px solid #222; box-shadow: 0 0 20px rgba(0,0,0,0.5);
         }
     </style>
 </head>
@@ -42,7 +50,7 @@
 
     <div id="container">
         <div id="controls">
-            <button id="pauseBtn" onclick="togglePause()">⏸️ Pause</button>
+            <button id="pauseBtn" onclick="togglePause()">⏸️</button>
             <button onclick="recenter()">📍 Recenter</button>
         </div>
         
@@ -50,20 +58,18 @@
         <iframe id="wazeA" class="visible" src="about:blank"></iframe>
         <iframe id="wazeB" class="hidden" src="about:blank"></iframe>
         
-        <div id="status">Connecting to GPS...</div>
         <div id="speed">0</div>
     </div>
 
     <script>
         let activeIframe = document.getElementById('wazeA');
         let hiddenIframe = document.getElementById('wazeB');
-        const status = document.getElementById('status');
         const speedEl = document.getElementById('speed');
 
-        let lastLat = 43.65, lastLon = -79.38; // Default coords
+        let lastLat = 0, lastLon = 0;
         let isPaused = false;
         let lastUpdate = 0;
-        const UPDATE_INTERVAL = 8000; // 8 seconds is safer for Tesla's CPU
+        const UPDATE_INTERVAL = 8000; 
 
         function updateMap(lat, lon) {
             const now = Date.now();
@@ -72,18 +78,16 @@
             // Load the new location into the HIDDEN iframe
             hiddenIframe.src = `https://embed.waze.com/iframe?zoom=16&lat=${lat}&lon=${lon}&pin=1`;
 
-            // Wait for it to finish loading before swapping
             hiddenIframe.onload = () => {
-                // Swap classes
+                // Swap visibility
                 hiddenIframe.className = 'visible';
                 activeIframe.className = 'hidden';
 
-                // Swap variable references
+                // Swap references
                 let temp = activeIframe;
                 activeIframe = hiddenIframe;
                 hiddenIframe = temp;
                 
-                status.textContent = `Live • ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
                 lastUpdate = Date.now();
             };
         }
@@ -92,7 +96,7 @@
             navigator.geolocation.watchPosition(pos => {
                 const { latitude, longitude, speed } = pos.coords;
                 
-                // Use car's native speed (m/s) if available, else 0
+                // Show speed in km/h
                 const kmh = speed ? (speed * 3.6).toFixed(0) : "0";
                 speedEl.textContent = kmh;
 
@@ -100,23 +104,17 @@
                 lastLon = longitude;
                 updateMap(latitude, longitude);
                 
-            }, err => {
-                status.textContent = "GPS Error: " + err.message;
-            }, { enableHighAccuracy: true, maximumAge: 1000 });
+            }, null, { enableHighAccuracy: true });
         }
 
         function recenter() {
-            updateMap(lastLat, lastLon);
+            if(lastLat !== 0) updateMap(lastLat, lastLon);
         }
 
         function togglePause() {
             isPaused = !isPaused;
-            document.getElementById('pauseBtn').textContent = isPaused ? '▶️ Resume' : '⏸️ Pause';
-            status.textContent = isPaused ? 'Tracking PAUSED' : 'Live';
+            document.getElementById('pauseBtn').textContent = isPaused ? '▶️' : '⏸️';
         }
-
-        // Initial Load
-        recenter();
     </script>
 </body>
 </html>
