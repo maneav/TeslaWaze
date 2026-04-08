@@ -1,1 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Waze Live • Tesla Smooth</title>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body, html { height:100%; overflow:hidden; background:#000; font-family: sans-serif; }
+        #container { width:100%; height:100vh; position:relative; }
+        
+        /* Smooth transition for the swap */
+        iframe { 
+            position: absolute; top:0; left:0; width:100%; height:100%; 
+            border:none; transition: opacity 0.4s ease-in-out; 
+        }
+        .hidden { opacity: 0; z-index: 1; pointer-events: none; }
+        .visible { opacity: 1; z-index: 2; }
+        
+        #speed {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.9); color: #00ff00; padding: 8px 25px;
+            border-radius: 50px; font-size: 32px; font-weight: bold; z-index: 100;
+            border: 2px solid #222; pointer-events: none;
+        }
+    </style>
+</head>
+<body>
 
+    <div id="container">
+        <!-- Double Buffer Iframes -->
+        <iframe id="wazeA" class="visible" src="about:blank"></iframe>
+        <iframe id="wazeB" class="hidden" src="about:blank"></iframe>
+        
+        <div id="speed">0</div>
+    </div>
+
+    <script>
+        let activeIframe = document.getElementById('wazeA');
+        let hiddenIframe = document.getElementById('wazeB');
+        const speedEl = document.getElementById('speed');
+
+        let lastLat = 43.65, lastLon = -79.38; 
+        let lastUpdate = 0;
+        const UPDATE_INTERVAL = 8000; 
+
+        function updateMap(lat, lon) {
+            const now = Date.now();
+            if (now - lastUpdate < UPDATE_INTERVAL) return;
+
+            hiddenIframe.src = `https://embed.waze.com/iframe?zoom=15&lat=${lat}&lon=${lon}&pin=1`;
+
+            hiddenIframe.onload = () => {
+                hiddenIframe.className = 'visible';
+                activeIframe.className = 'hidden';
+
+                let temp = activeIframe;
+                activeIframe = hiddenIframe;
+                hiddenIframe = temp;
+                
+                lastUpdate = Date.now();
+            };
+        }
+
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(pos => {
+                const { latitude, longitude, speed } = pos.coords;
+                const kmh = speed ? (speed * 3.6).toFixed(0) : "0";
+                speedEl.textContent = kmh;
+
+                lastLat = latitude;
+                lastLon = longitude;
+                updateMap(latitude, longitude);
+                
+            }, null, { enableHighAccuracy: true, maximumAge: 1000 });
+        }
+
+        // Initial Load
+        updateMap(lastLat, lastLon);
+    </script>
+</body>
+</html>
