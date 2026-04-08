@@ -16,6 +16,10 @@
         }
         .hidden { opacity: 0; z-index: 1; pointer-events: none; }
         .visible { opacity: 1; z-index: 2; }
+
+        /* Buffer trick: kept at 0.01 opacity so browser doesn't "freeze" it */
+        .buffer { opacity: 0.01; z-index: 1; pointer-events: none; }
+        .visible { opacity: 1; z-index: 2; }
         
         #speed {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
