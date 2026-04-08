@@ -3,36 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Waze Pure • Tesla</title>
+    <title>Waze Live • Tesla Smooth</title>
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
         body, html { height:100%; overflow:hidden; background:#000; font-family: sans-serif; }
+        #container { width:100%; height:100vh; position:relative; }
         
-        /* Container clips the search box */
-        #container { 
-            width:100%; height:100vh; position:relative; 
-            overflow: hidden; 
-        }
-        
+        /* Smooth transition for the swap */
         iframe { 
-            position: absolute; 
-            top: -65px; left: 0; 
-            width: 100%; 
-            height: calc(100% + 65px); 
-            border:none; 
-            transition: opacity 0.6s ease-in-out;
-            /* Forced Dark Mode */
-            filter: invert(90%) hue-rotate(180deg) brightness(95%) contrast(110%);
+            position: absolute; top:0; left:0; width:100%; height:100%; 
+            border:none; transition: opacity 0.4s ease-in-out; 
         }
-
         .hidden { opacity: 0; z-index: 1; pointer-events: none; }
         .visible { opacity: 1; z-index: 2; }
         
         #speed {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            background: rgba(0,0,0,0.8); color: #00ff00; padding: 12px 40px;
-            border-radius: 50px; font-size: 42px; font-weight: bold; z-index: 100;
-            border: 2px solid #333; pointer-events: none; /* Won't interfere with map touches */
+            background: rgba(0,0,0,0.9); color: #00ff00; padding: 8px 25px;
+            border-radius: 50px; font-size: 32px; font-weight: bold; z-index: 100;
+            border: 2px solid #222; pointer-events: none;
         }
     </style>
 </head>
@@ -51,14 +40,15 @@
         let hiddenIframe = document.getElementById('wazeB');
         const speedEl = document.getElementById('speed');
 
+        let lastLat = 43.65, lastLon = -79.38; 
         let lastUpdate = 0;
-        const UPDATE_INTERVAL = 8000; // 8 seconds for smooth Tesla performance
+        const UPDATE_INTERVAL = 8000; 
 
         function updateMap(lat, lon) {
             const now = Date.now();
             if (now - lastUpdate < UPDATE_INTERVAL) return;
 
-            hiddenIframe.src = `https://waze.com{lat}&lon=${lon}&pin=1`;
+            hiddenIframe.src = `https://embed.waze.com/iframe?zoom=16&lat=${lat}&lon=${lon}&pin=1`;
 
             hiddenIframe.onload = () => {
                 hiddenIframe.className = 'visible';
@@ -75,14 +65,18 @@
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition(pos => {
                 const { latitude, longitude, speed } = pos.coords;
-                
-                // Show speed in km/h
                 const kmh = speed ? (speed * 3.6).toFixed(0) : "0";
                 speedEl.textContent = kmh;
 
+                lastLat = latitude;
+                lastLon = longitude;
                 updateMap(latitude, longitude);
-            }, null, { enableHighAccuracy: true });
+                
+            }, null, { enableHighAccuracy: true, maximumAge: 1000 });
         }
+
+        // Initial Load
+        updateMap(lastLat, lastLon);
     </script>
 </body>
 </html>
