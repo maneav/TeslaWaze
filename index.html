@@ -9,16 +9,19 @@
         body, html { height:100%; overflow:hidden; background:#000; font-family:sans-serif; }
         #container { width:100%; height:100vh; position:relative; background: #000; }
         
-        /* FIX: Removed CSS Opacity Transition - it causes the 'bounce' in Tesla */
         iframe {
             position: absolute; top:0; left:0; width:100%; height:100%;
             border:none;
             background: #000;
+            /* Using opacity for a subtle fade-in transition */
+            transition: opacity 0.3s ease-in-out;
+            will-change: opacity;
         }
         
-        /* FIX: Use z-index and visibility for an instant 'hard' swap */
-        .hidden { visibility: hidden; z-index: 1; }
-        .visible { visibility: visible; z-index: 2; }
+        /* New logic: Active iframe is opaque and on top */
+        .visible { opacity: 1; z-index: 5; visibility: visible; }
+        /* Hidden iframe is transparent and underneath */
+        .hidden { opacity: 0; z-index: 1; visibility: visible; }
 
         #speed {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
@@ -67,19 +70,26 @@
         }
 
         function executeSwap(lat, lon, statusMsg) {
-            // FIX: Hard swap without transitions prevents the 'bouncing' effect
-            [active, hidden] = [hidden, active];
-            active.className = 'visible';
-            hidden.className = 'hidden';
+            // THE SMOOTH SWAP:
+            // 1. Move the hidden (loaded) iframe to the front
+            hidden.className = 'visible';
             
-            lastLat = lat;
-            lastLon = lon;
-            lastUpdate = Date.now();
-            isUpdating = false;
-            
-            localStorage.setItem('lastWazeLat', lat);
-            localStorage.setItem('lastWazeLon', lon);
-            statusEl.textContent = statusMsg;
+            // 2. Short delay before hiding the old one to ensure zero 'flicker'
+            setTimeout(() => {
+                active.className = 'hidden';
+                
+                // 3. Toggle variables
+                [active, hidden] = [hidden, active];
+                
+                lastLat = lat;
+                lastLon = lon;
+                lastUpdate = Date.now();
+                isUpdating = false;
+                
+                localStorage.setItem('lastWazeLat', lat);
+                localStorage.setItem('lastWazeLon', lon);
+                statusEl.textContent = statusMsg;
+            }, 300); // Matches the CSS transition time
         }
 
         function updateMap(lat, lon) {
@@ -90,22 +100,20 @@
             if (dist < MIN_DISTANCE) return;
 
             isUpdating = true;
-            statusEl.textContent = `Loading background...`;
+            statusEl.textContent = `Rendering...`;
 
             hidden.src = buildUrl(lat, lon);
 
-            // Safety timeout
             const timeout = setTimeout(() => {
-                executeSwap(lat, lon, 'Map updated (forced)');
+                executeSwap(lat, lon, 'Updated (Forced)');
             }, 7000);
 
             hidden.onload = () => {
                 clearTimeout(timeout);
-                // FIX: The 'Render Buffer'. Wait 1 second after load so 
-                // Tesla has time to actually draw the map tiles.
+                // Give Tesla browser 600ms to actually PAINT the tiles before swapping
                 setTimeout(() => {
                     executeSwap(lat, lon, 'Map updated');
-                }, 2000);
+                }, 600);
             };
         }
 
