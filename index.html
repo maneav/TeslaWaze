@@ -78,9 +78,6 @@
             setTimeout(() => {
                 active.className = 'hidden';
                 
-            // 3. CRITICAL: Clear memory by blanking the old iframe
-                active.src = 'about:blank'; 
-                
                 // 3. Toggle variables
                 [active, hidden] = [hidden, active];
                 
