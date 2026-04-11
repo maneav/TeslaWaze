@@ -7,18 +7,21 @@
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
         body, html { height:100%; overflow:hidden; background:#000; font-family:sans-serif; }
-        #container { width:100%; height:100vh; position:relative; background:#000; }
-
+        #container { width:100%; height:100vh; position:relative; background: #000; }
+        
         iframe {
             position: absolute; top:0; left:0; width:100%; height:100%;
             border:none;
-            background:#000;
+            background: #000;
+            /* Using opacity for a subtle fade-in transition */
             transition: opacity 0.3s ease-in-out;
             will-change: opacity;
         }
-
+        
+        /* New logic: Active iframe is opaque and on top */
         .visible { opacity: 1; z-index: 5; visibility: visible; }
-        .hidden  { opacity: 0; z-index: 1; visibility: visible; }
+        /* Hidden iframe is transparent and underneath */
+        .hidden { opacity: 0; z-index: 1; visibility: visible; }
 
         #speed {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
@@ -34,8 +37,8 @@
 </head>
 <body>
     <div id="container">
-        <iframe id="wazeA" class="visible" src="about:blank" allow="geolocation"></iframe>
-        <iframe id="wazeB" class="hidden"  src="about:blank" allow="geolocation"></iframe>
+        <iframe id="wazeA" class="visible" src="about:blank"></iframe>
+        <iframe id="wazeB" class="hidden" src="about:blank"></iframe>
         <div id="speed">0</div>
         <div id="status">Initializing...</div>
     </div>
@@ -49,53 +52,46 @@
         let lastLat = 43.65;
         let lastLon = -79.38;
         let lastUpdate = 0;
-        let isUpdating = false;
+        let isUpdating = false; 
 
-        const UPDATE_INTERVAL = 6000;
+        const UPDATE_INTERVAL = 6000; 
         const MIN_DISTANCE = 80;
-
-        // Force dark mode via prefers-color-scheme + Waze-friendly params
-        function buildUrl(lat, lon) {
-            const ts = Date.now(); // cache busting for memory/performance
-            return `https://embed.waze.com/iframe?zoom=16&lat=${lat.toFixed(6)}&lon=${lon.toFixed(6)}&pin=1&ct=livemap&language_code=en&darkmode=1&ts=${ts}`;
-        }
 
         function distance(lat1, lon1, lat2, lon2) {
             const R = 6371000;
             const dLat = (lat2 - lat1) * Math.PI / 180;
             const dLon = (lon2 - lon1) * Math.PI / 180;
             const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
-            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
         }
 
-        function cleanIframe(iframe) {
-            if (iframe) {
-                iframe.src = 'about:blank';
-                // Force garbage collection hint
-                try { iframe.contentWindow?.location?.replace('about:blank'); } catch(e){}
-            }
+        function buildUrl(lat, lon) {
+            return `https://embed.waze.com/iframe?zoom=15&lat=${lat.toFixed(6)}&lon=${lon.toFixed(6)}&pin=1&ct=livemap&language_code=en`;
         }
 
         function executeSwap(lat, lon, statusMsg) {
+            // THE SMOOTH SWAP:
+            // 1. Move the hidden (loaded) iframe to the front
             hidden.className = 'visible';
-
+            
+            // 2. Short delay before hiding the old one to ensure zero 'flicker'
             setTimeout(() => {
                 active.className = 'hidden';
-                cleanIframe(active); // unload old content from memory
-
+                
+                // 3. Toggle variables
                 [active, hidden] = [hidden, active];
-
+                
                 lastLat = lat;
                 lastLon = lon;
                 lastUpdate = Date.now();
                 isUpdating = false;
-
+                
                 localStorage.setItem('lastWazeLat', lat);
                 localStorage.setItem('lastWazeLon', lon);
                 statusEl.textContent = statusMsg;
-            }, 300);
+            }, 300); // Matches the CSS transition time
         }
-
+        
         function updateMap(lat, lon) {
             const now = Date.now();
             if (isUpdating || (now - lastUpdate < UPDATE_INTERVAL)) return;
@@ -104,7 +100,7 @@
             if (dist < MIN_DISTANCE) return;
 
             isUpdating = true;
-            statusEl.textContent = 'Rendering...';
+            statusEl.textContent = `Rendering...`;
 
             hidden.src = buildUrl(lat, lon);
 
@@ -114,6 +110,7 @@
 
             hidden.onload = () => {
                 clearTimeout(timeout);
+                // Give Tesla browser 600ms to actually PAINT the tiles before swapping
                 setTimeout(() => {
                     executeSwap(lat, lon, 'Map updated');
                 }, 600);
@@ -131,30 +128,15 @@
             lastUpdate = Date.now();
         }
 
-        // Geolocation + speed
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition(pos => {
                 const { latitude, longitude, speed } = pos.coords;
                 speedEl.textContent = speed ? Math.round(speed * 3.6) : 0;
                 updateMap(latitude, longitude);
-            }, () => {}, { enableHighAccuracy: true, maximumAge: 0 });
+            }, null, { enableHighAccuracy: true });
         }
 
-        // Auto dark mode + Tesla compatibility
-        const darkModeMedia = window.matchMedia('(prefers-color-scheme: dark)');
-        function applyDarkMode() {
-            document.documentElement.style.setProperty('color-scheme', 'dark');
-        }
-        darkModeMedia.addEventListener('change', applyDarkMode);
-        applyDarkMode();
-
-        // Initialize
         preload();
-
-        // Periodic memory cleanup every 10 minutes
-        setInterval(() => {
-            cleanIframe(hidden);
-        }, 10 * 60 * 1000);
     </script>
 </body>
 </html>
