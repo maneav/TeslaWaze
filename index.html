@@ -89,6 +89,10 @@
             setTimeout(() => {
                 active.className = 'hidden';
                 active.style.transition = "opacity 0.2s ease-in-out"; // Reset for next time
+
+            // MEMORY CLEANUP: Flush the old map content
+            // This prevents the Tesla browser from lagging over long drives.         
+                active.src = 'about:blank';
                 
                 [active, hidden] = [hidden, active];
                 lastLat = lat;
