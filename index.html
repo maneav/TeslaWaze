@@ -14,7 +14,7 @@
             position: absolute; top:0; left:0; width:100%; height:100%;
             border:none;
             background: #000;
-            transition: opacity 0.2s ease-in-out; /* FASTER TRANSITION for losing old iframe */
+            transition: opacity 0.3s ease-in-out; /* FASTER TRANSITION for losing old iframe */
             will-change: opacity;
         }
         
@@ -99,7 +99,7 @@
                 localStorage.setItem('lastWazeLat', lat);
                 localStorage.setItem('lastWazeLon', lon);
                 statusEl.textContent = statusMsg;
-            }, 150); 
+            }, 400); 
         }
         
         function updateMap(lat, lon) {
