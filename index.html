@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Waze Live • Tesla Optimized</title>
+    <title>Waze Live • Tesla Smooth</title>
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
         body, html { height:100%; overflow:hidden; background:#000; font-family:sans-serif; }
@@ -11,37 +11,31 @@
 
         iframe {
             position: absolute; top:0; left:0; width:100%; height:100%;
-            border:none; background:#000;
-            transition: opacity 0.28s ease-in-out;
+            border:none;
+            background:#000;
+            transition: opacity 0.3s ease-in-out;
             will-change: opacity;
         }
 
-        .visible { opacity: 1; z-index: 5; }
-        .hidden  { opacity: 0; z-index: 1; }
+        .visible { opacity: 1; z-index: 5; visibility: visible; }
+        .hidden  { opacity: 0; z-index: 1; visibility: visible; }
 
         #speed {
-            position: absolute; bottom: 35px; left: 50%; transform: translateX(-50%);
-            background: rgba(0,0,0,0.88); color: #00ff41; padding: 8px 34px;
-            border-radius: 50px; font-size: 46px; font-weight: bold; z-index: 100;
-            border: 2px solid #00ff41; pointer-events: none;
-            box-shadow: 0 0 20px rgba(0,255,65,0.5);
-            text-shadow: 0 0 10px rgba(0,255,65,0.7);
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.9); color: #00ff00; padding: 8px 25px;
+            border-radius: 50px; font-size: 32px; font-weight: bold; z-index: 100;
+            border: 2px solid #222; pointer-events: none;
+            box-shadow: 0 0 10px rgba(0,255,0,0.3);
         }
-
         #status {
-            position: absolute; top: 15px; left: 15px; color: #aaa; font-size: 13px; z-index: 100;
-            background: rgba(0,0,0,0.65); padding: 5px 12px; border-radius: 6px;
-        }
-
-        .dark-filter {
-            filter: brightness(0.82) contrast(1.18) saturate(0.92);
+            position: absolute; top: 10px; left: 10px; color: #aaa; font-size: 12px; z-index: 100;
         }
     </style>
 </head>
 <body>
     <div id="container">
-        <iframe id="wazeA" class="visible" src="about:blank" allowfullscreen></iframe>
-        <iframe id="wazeB" class="hidden"  src="about:blank" allowfullscreen></iframe>
+        <iframe id="wazeA" class="visible" src="about:blank" allow="geolocation"></iframe>
+        <iframe id="wazeB" class="hidden"  src="about:blank" allow="geolocation"></iframe>
         <div id="speed">0</div>
         <div id="status">Initializing...</div>
     </div>
@@ -56,61 +50,38 @@
         let lastLon = -79.38;
         let lastUpdate = 0;
         let isUpdating = false;
-        let memoryCounter = 0;
-        let currentSpeed = 0;
 
-        const UPDATE_INTERVAL = 4000;
-        const MIN_DISTANCE = 55;
+        const UPDATE_INTERVAL = 6000;
+        const MIN_DISTANCE = 80;
+
+        // Force dark mode via prefers-color-scheme + Waze-friendly params
+        function buildUrl(lat, lon) {
+            const ts = Date.now(); // cache busting for memory/performance
+            return `https://embed.waze.com/iframe?zoom=16&lat=${lat.toFixed(6)}&lon=${lon.toFixed(6)}&pin=1&ct=livemap&language_code=en&darkmode=1&ts=${ts}`;
+        }
 
         function distance(lat1, lon1, lat2, lon2) {
             const R = 6371000;
             const dLat = (lat2 - lat1) * Math.PI / 180;
             const dLon = (lon2 - lon1) * Math.PI / 180;
             const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
-            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         }
 
-        function isNight() {
-            const hour = new Date().getHours();
-            return hour < 7 || hour > 20;
-        }
-
-        function getZoomForSpeed(speedKmh) {
-            if (speedKmh < 50) return 16.3;      // City - best for alerts/icons
-            if (speedKmh < 85) return 15.7;      // Urban highway
-            return 15.2;                         // Highway - wide view
-        }
-
-        function buildUrl(lat, lon) {
-            const zoom = getZoomForSpeed(currentSpeed);
-            let url = `https://embed.waze.com/iframe?zoom=${zoom}&lat=${lat.toFixed(6)}&lon=${lon.toFixed(6)}`;
-            url += '&pin=1&ct=livemap&language_code=en-GB';
-            
-            if (isNight()) url += '&dark=true';
-            return url;
-        }
-
-        function applyDarkMode() {
-            const isDark = isNight();
-            active.classList.toggle('dark-filter', isDark);
-            hidden.classList.toggle('dark-filter', isDark);
-        }
-
-        function cleanMemory(iframe) {
-            if (!iframe) return;
-            iframe.src = 'about:blank';
-            setTimeout(() => {
+        function cleanIframe(iframe) {
+            if (iframe) {
+                iframe.src = 'about:blank';
+                // Force garbage collection hint
                 try { iframe.contentWindow?.location?.replace('about:blank'); } catch(e){}
-            }, 100);
+            }
         }
 
-        function executeSwap(lat, lon, msg) {
-            hidden.classList.add('visible');
-            hidden.classList.remove('hidden');
+        function executeSwap(lat, lon, statusMsg) {
+            hidden.className = 'visible';
 
             setTimeout(() => {
-                active.classList.add('hidden');
-                active.classList.remove('visible');
+                active.className = 'hidden';
+                cleanIframe(active); // unload old content from memory
 
                 [active, hidden] = [hidden, active];
 
@@ -121,16 +92,8 @@
 
                 localStorage.setItem('lastWazeLat', lat);
                 localStorage.setItem('lastWazeLon', lon);
-                statusEl.textContent = msg;
-
-                applyDarkMode();
-
-                memoryCounter++;
-                if (memoryCounter >= 6) {
-                    cleanMemory(hidden);
-                    memoryCounter = 0;
-                }
-            }, 280);
+                statusEl.textContent = statusMsg;
+            }, 300);
         }
 
         function updateMap(lat, lon) {
@@ -141,18 +104,19 @@
             if (dist < MIN_DISTANCE) return;
 
             isUpdating = true;
-            statusEl.textContent = 'Loading map...';
+            statusEl.textContent = 'Rendering...';
 
-            cleanMemory(hidden);
             hidden.src = buildUrl(lat, lon);
 
             const timeout = setTimeout(() => {
-                executeSwap(lat, lon, 'Updated');
-            }, 6000);
+                executeSwap(lat, lon, 'Updated (Forced)');
+            }, 7000);
 
             hidden.onload = () => {
                 clearTimeout(timeout);
-                setTimeout(() => executeSwap(lat, lon, 'Alerts updated ✓'), 500);
+                setTimeout(() => {
+                    executeSwap(lat, lon, 'Map updated');
+                }, 600);
             };
         }
 
@@ -165,30 +129,32 @@
             }
             active.src = buildUrl(lastLat, lastLon);
             lastUpdate = Date.now();
-            applyDarkMode();
         }
 
-        // GPS Tracking
+        // Geolocation + speed
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition(pos => {
                 const { latitude, longitude, speed } = pos.coords;
-                currentSpeed = speed ? Math.round(speed * 3.6) : 0;
-
-                speedEl.textContent = currentSpeed;
-                speedEl.style.color = (currentSpeed > 110) ? '#ff3366' : '#00ff41';
-
+                speedEl.textContent = speed ? Math.round(speed * 3.6) : 0;
                 updateMap(latitude, longitude);
-            }, () => {}, { 
-                enableHighAccuracy: true, 
-                maximumAge: 1200, 
-                timeout: 5000 
-            });
+            }, () => {}, { enableHighAccuracy: true, maximumAge: 0 });
         }
 
+        // Auto dark mode + Tesla compatibility
+        const darkModeMedia = window.matchMedia('(prefers-color-scheme: dark)');
+        function applyDarkMode() {
+            document.documentElement.style.setProperty('color-scheme', 'dark');
+        }
+        darkModeMedia.addEventListener('change', applyDarkMode);
+        applyDarkMode();
+
+        // Initialize
         preload();
 
-        // Background memory cleanup
-        setInterval(() => cleanMemory(hidden), 180000); // every 3 minutes
+        // Periodic memory cleanup every 10 minutes
+        setInterval(() => {
+            cleanIframe(hidden);
+        }, 10 * 60 * 1000);
     </script>
 </body>
 </html>
