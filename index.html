@@ -78,7 +78,7 @@
         function buildUrl(lat, lon) {
             // Waze doesn't have a reliable URL parameter for dark mode, 
             // but keeping the UI synced prevents the 'white frame' flash.
-            return `https://embed.waze.com/iframe?zoom=16&lat=${lat.toFixed(6)}&lon=${lon.toFixed(6)}&pin=1&ct=livemap&language_code=en`;
+            return `https://embed.waze.com/iframe?zoom=15&lat=${lat.toFixed(6)}&lon=${lon.toFixed(6)}&pin=1&ct=livemap&language_code=en`;
         }
 
         function executeSwap(lat, lon, statusMsg) {
