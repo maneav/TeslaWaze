@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Waze Live • Tesla Smooth</title>
     <style>
+        /* Base styles are dark by default to prevent blinding white flashes */
         * { margin:0; padding:0; box-sizing:border-box; }
         body, html { height:100%; overflow:hidden; background:#000; font-family:sans-serif; }
         #container { width:100%; height:100vh; position:relative; background: #000; }
@@ -13,14 +14,11 @@
             position: absolute; top:0; left:0; width:100%; height:100%;
             border:none;
             background: #000;
-            /* Using opacity for a subtle fade-in transition */
-            transition: opacity 0.3s ease-in-out;
+            transition: opacity 0.2s ease-in-out; /* FASTER TRANSITION for losing old iframe */
             will-change: opacity;
         }
         
-        /* New logic: Active iframe is opaque and on top */
         .visible { opacity: 1; z-index: 5; visibility: visible; }
-        /* Hidden iframe is transparent and underneath */
         .hidden { opacity: 0; z-index: 1; visibility: visible; }
 
         #speed {
@@ -32,6 +30,13 @@
         }
         #status {
             position: absolute; top: 10px; left: 10px; color: #aaa; font-size: 12px; z-index: 100;
+        }
+
+        /* AUTO DARK MODE CSS: Only changes UI elements if Tesla is in Light Mode */
+        @media (prefers-color-scheme: light) {
+            body, html, #container, iframe { background: #eee; }
+            #speed { background: rgba(255,255,255,0.9); color: #000; border: 2px solid #ccc; }
+            #status { color: #444; }
         }
     </style>
 </head>
@@ -57,6 +62,11 @@
         const UPDATE_INTERVAL = 6000; 
         const MIN_DISTANCE = 80;
 
+        // Function to detect if Tesla is in Dark Mode
+        function isDarkMode() {
+            return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        }
+
         function distance(lat1, lon1, lat2, lon2) {
             const R = 6371000;
             const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -66,21 +76,21 @@
         }
 
         function buildUrl(lat, lon) {
-            return `https://embed.waze.com/iframe?zoom=15&lat=${lat.toFixed(6)}&lon=${lon.toFixed(6)}&pin=1&ct=livemap&language_code=en`;
+            // Waze doesn't have a reliable URL parameter for dark mode, 
+            // but keeping the UI synced prevents the 'white frame' flash.
+            return `https://embed.waze.com/iframe?zoom=16&lat=${lat.toFixed(6)}&lon=${lon.toFixed(6)}&pin=1&ct=livemap&language_code=en`;
         }
 
         function executeSwap(lat, lon, statusMsg) {
-            // THE SMOOTH SWAP:
-            // 1. Move the hidden (loaded) iframe to the front
+            // LOSS TRANSITION: Fast hide
+            active.style.transition = "opacity 0.15s ease-out"; 
             hidden.className = 'visible';
             
-            // 2. Short delay before hiding the old one to ensure zero 'flicker'
             setTimeout(() => {
                 active.className = 'hidden';
+                active.style.transition = "opacity 0.2s ease-in-out"; // Reset for next time
                 
-                // 3. Toggle variables
                 [active, hidden] = [hidden, active];
-                
                 lastLat = lat;
                 lastLon = lon;
                 lastUpdate = Date.now();
@@ -89,7 +99,7 @@
                 localStorage.setItem('lastWazeLat', lat);
                 localStorage.setItem('lastWazeLon', lon);
                 statusEl.textContent = statusMsg;
-            }, 300); // Matches the CSS transition time
+            }, 150); 
         }
         
         function updateMap(lat, lon) {
@@ -101,21 +111,24 @@
 
             isUpdating = true;
             statusEl.textContent = `Rendering...`;
-
             hidden.src = buildUrl(lat, lon);
 
-            const timeout = setTimeout(() => {
-                executeSwap(lat, lon, 'Updated (Forced)');
-            }, 7000);
+            const timeout = setTimeout(() => executeSwap(lat, lon, 'Updated (Forced)'), 7000);
 
             hidden.onload = () => {
                 clearTimeout(timeout);
-                // Give Tesla browser 600ms to actually PAINT the tiles before swapping
+                // UPLOAD DELAY: Wait 800ms for Tesla to finish painting tiles before showing
                 setTimeout(() => {
                     executeSwap(lat, lon, 'Map updated');
-                }, 600);
+                }, 800);
             };
         }
+
+        // Listen for system theme changes (Light/Dark mode)
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+            statusEl.textContent = "Syncing theme...";
+            updateMap(lastLat, lastLon); // Force a map reload to try and trigger waze theme update
+        });
 
         function preload() {
             const savedLat = localStorage.getItem('lastWazeLat');
