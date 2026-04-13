@@ -78,6 +78,11 @@
             setTimeout(() => {
                 active.className = 'hidden';
                 
+            // --- MEMORY CLEANUP ---
+            // This is the crucial part: clear the source of the old iframe
+            // so the Tesla browser releases the RAM used by the previous map.
+                active.src = 'about:blank';
+                        
                 // 3. Toggle variables
                 [active, hidden] = [hidden, active];
                 
@@ -89,7 +94,7 @@
                 localStorage.setItem('lastWazeLat', lat);
                 localStorage.setItem('lastWazeLon', lon);
                 statusEl.textContent = statusMsg;
-            }, 300); // Matches the CSS transition time
+            }, 350); // Matches the CSS transition time
         }
         
         function updateMap(lat, lon) {
