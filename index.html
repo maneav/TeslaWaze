@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Waze Live • Tesla Smooth</title>
     <style>
-        /* Base styles are dark by default to prevent blinding white flashes */
         * { margin:0; padding:0; box-sizing:border-box; }
         body, html { height:100%; overflow:hidden; background:#000; font-family:sans-serif; }
         #container { width:100%; height:100vh; position:relative; background: #000; }
@@ -14,7 +13,8 @@
             position: absolute; top:0; left:0; width:100%; height:100%;
             border:none;
             background: #000;
-            transition: opacity 0.3s ease-in-out; /* FASTER TRANSITION for losing old iframe */
+            /* Smooth 0.5s fade duration */
+            transition: opacity 0.5s ease-in-out;
             will-change: opacity;
         }
         
@@ -32,10 +32,10 @@
             position: absolute; top: 10px; left: 10px; color: #aaa; font-size: 12px; z-index: 100;
         }
 
-        /* AUTO DARK MODE CSS: Only changes UI elements if Tesla is in Light Mode */
+        /* AUTO DARK MODE CSS */
         @media (prefers-color-scheme: light) {
             body, html, #container, iframe { background: #eee; }
-            #speed { background: rgba(255,255,255,0.9); color: #000; border: 2px solid #ccc; }
+            #speed { background: rgba(255,255,255,0.9); color: #008000; border: 2px solid #ccc; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
             #status { color: #444; }
         }
     </style>
@@ -62,11 +62,6 @@
         const UPDATE_INTERVAL = 6000; 
         const MIN_DISTANCE = 80;
 
-        // Function to detect if Tesla is in Dark Mode
-        function isDarkMode() {
-            return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        }
-
         function distance(lat1, lon1, lat2, lon2) {
             const R = 6371000;
             const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -76,23 +71,21 @@
         }
 
         function buildUrl(lat, lon) {
-            // Waze doesn't have a reliable URL parameter for dark mode, 
-            // but keeping the UI synced prevents the 'white frame' flash.
-            return `https://embed.waze.com/iframe?zoom=16&lat=${lat.toFixed(6)}&lon=${lon.toFixed(6)}&pin=1&ct=livemap&language_code=en`;
+            return `https://waze.com{lat.toFixed(6)}&lon=${lon.toFixed(6)}&pin=1&ct=livemap&language_code=en`;
         }
 
         function executeSwap(lat, lon, statusMsg) {
-            // LOSS TRANSITION: Fast hide
-            active.style.transition = "opacity 0.15s ease-out"; 
+            // 1. Bring new map to front (begins 0.5s fade)
             hidden.className = 'visible';
             
+            // 2. Overlap Delay: Wait 0.6s for fade to finish
             setTimeout(() => {
                 active.className = 'hidden';
-                active.style.transition = "opacity 0.2s ease-in-out"; // Reset for next time
-
-            // MEMORY CLEANUP: Flush the old map content
-            // This prevents the Tesla browser from lagging over long drives.         
-                active.src = 'about:blank';
+                
+                // MEMORY CLEANUP: Flush the old map content
+                if (active.src !== 'about:blank') {
+                    active.src = 'about:blank';
+                }
                 
                 [active, hidden] = [hidden, active];
                 lastLat = lat;
@@ -103,35 +96,36 @@
                 localStorage.setItem('lastWazeLat', lat);
                 localStorage.setItem('lastWazeLon', lon);
                 statusEl.textContent = statusMsg;
-            }, 400); 
+            }, 600); 
         }
         
-        function updateMap(lat, lon) {
+        function updateMap(lat, lon, force = false) {
             const now = Date.now();
-            if (isUpdating || (now - lastUpdate < UPDATE_INTERVAL)) return;
-
-            const dist = distance(lastLat, lastLon, lat, lon);
-            if (dist < MIN_DISTANCE) return;
+            // If not forced, respect intervals and distance
+            if (!force) {
+                if (isUpdating || (now - lastUpdate < UPDATE_INTERVAL)) return;
+                const dist = distance(lastLat, lastLon, lat, lon);
+                if (dist < MIN_DISTANCE) return;
+            }
 
             isUpdating = true;
-            statusEl.textContent = `Rendering...`;
+            statusEl.textContent = force ? `Syncing Theme...` : `Rendering...`;
             hidden.src = buildUrl(lat, lon);
 
-            const timeout = setTimeout(() => executeSwap(lat, lon, 'Updated (Forced)'), 7000);
+            const timeout = setTimeout(() => executeSwap(lat, lon, 'Updated (Forced)'), 8000);
 
             hidden.onload = () => {
                 clearTimeout(timeout);
-                // UPLOAD DELAY: Wait 800ms for Tesla to finish painting tiles before showing
+                // UPLOAD DELAY: Wait 1s for Tesla to paint tiles
                 setTimeout(() => {
-                    executeSwap(lat, lon, 'Map updated');
-                }, 800);
+                    executeSwap(lat, lon, force ? 'Theme Updated' : 'Map Updated');
+                }, 1000);
             };
         }
 
-        // Listen for system theme changes (Light/Dark mode)
-        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
-            statusEl.textContent = "Syncing theme...";
-            updateMap(lastLat, lastLon); // Force a map reload to try and trigger waze theme update
+        // Fix: Force a reload when Tesla switches Light/Dark mode
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+            updateMap(lastLat, lastLon, true); 
         });
 
         function preload() {
