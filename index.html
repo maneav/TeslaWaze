@@ -77,12 +77,7 @@
             // 2. Short delay before hiding the old one to ensure zero 'flicker'
             setTimeout(() => {
                 active.className = 'hidden';
-                
-            // --- MEMORY CLEANUP ---
-            // This is the crucial part: clear the source of the old iframe
-            // so the Tesla browser releases the RAM used by the previous map.
-                active.src = 'about:blank';
-                        
+
                 // 3. Toggle variables
                 [active, hidden] = [hidden, active];
                 
