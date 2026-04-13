@@ -66,7 +66,7 @@
         }
 
         function buildUrl(lat, lon) {
-            return `https://embed.waze.com/iframe?zoom=15.7&lat=${lat.toFixed(6)}&lon=${lon.toFixed(6)}&pin=1&ct=livemap&language_code=en`;
+            return `https://embed.waze.com/iframe?zoom=16&lat=${lat.toFixed(6)}&lon=${lon.toFixed(6)}&pin=1&ct=livemap&language_code=en`;
         }
 
         function executeSwap(lat, lon, statusMsg) {
@@ -77,16 +77,8 @@
             // 2. Short delay before hiding the old one to ensure zero 'flicker'
             setTimeout(() => {
                 active.className = 'hidden';
-
-        // --- MEMORY CLEANUP START ---
-        // Setting to about:blank forces the browser to dump 
-        // the heavy Waze map data from the hidden iframe.
-        if (active.src !== 'about:blank') {
-            active.src = 'about:blank';
-        }
-        // --- MEMORY CLEANUP END ---       
                 
-            // 3. Toggle variables
+                // 3. Toggle variables
                 [active, hidden] = [hidden, active];
                 
                 lastLat = lat;
@@ -97,7 +89,7 @@
                 localStorage.setItem('lastWazeLat', lat);
                 localStorage.setItem('lastWazeLon', lon);
                 statusEl.textContent = statusMsg;
-            }, 400); // Matches the CSS transition time
+            }, 300); // Matches the CSS transition time
         }
         
         function updateMap(lat, lon) {
